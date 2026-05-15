@@ -345,6 +345,41 @@ sidecars: []
 #         memory: 64Mi
 
 # ============================================================
+# Partner Schema Validation
+# ============================================================
+# Supply a custom OpenAPI schema to validate cluster/nodepool spec fields
+# before they are written to the database. Different partners (GCP, AWS, etc.)
+# can enforce their own field constraints this way.
+#
+# The API fails to start if this is enabled but the schema cannot be loaded —
+# this prevents silent acceptance of invalid data.
+#
+# Usage:
+#   Option A — inline content (Helm creates the ConfigMap):
+#     partnerSchema:
+#       enabled: true
+#       content: |
+#         openapi: "3.0.0"
+#         ...
+#
+#   Option B — existing ConfigMap:
+#     partnerSchema:
+#       enabled: true
+#       existingConfigMap: my-partner-schema
+#       existingConfigMapKey: schema.yaml   # optional, defaults to "schema.yaml"
+#
+# See docs/deployment.md#partner-schema-validation for full details.
+partnerSchema:
+  enabled: false
+  # Inline schema content — Helm creates a ConfigMap from this value.
+  # Ignored when existingConfigMap is set.
+  content: ""
+  # Name of an existing ConfigMap that already contains the schema.
+  existingConfigMap: ""
+  # Key within the ConfigMap that holds the schema YAML.
+  existingConfigMapKey: "schema.yaml"
+
+# ============================================================
 # Advanced Overrides (Escape Hatch)
 # ============================================================
 # Additional environment variables to override ConfigMap values.

@@ -143,12 +143,13 @@ HyperFleet API is configured via environment variables and configuration files.
 
 ### Schema Validation
 
-The API validates cluster and nodepool `spec` fields against an OpenAPI schema. This allows different providers (GCP, AWS, Azure) to have different spec structures.
+The API validates cluster and nodepool `spec` fields against an OpenAPI schema. This allows different partners (GCP, AWS, Azure) to enforce provider-specific field constraints before data is written to the database.
 
-- **Configuration:** `server.openapi_schema_path` (supports config file, env var, or CLI flag)
-- **Default:** `openapi/openapi.yaml` (provider-agnostic base schema)
+- **Configuration:** `HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH` env var, `server.openapi_schema_path` config key, or `--server-openapi-schema-path` flag
+- **Default:** empty (validation disabled — no schema is loaded)
+- **Fail-fast:** if the path is set but the file is missing or invalid, **the API exits immediately** rather than accepting data that bypasses validation
 
-See [Configuration Guide](config.md) for all configuration options.
+See [Configuration Guide](config.md) for all configuration options and the [Partner Schema Validation](#partner-schema-validation) section below for Kubernetes deployment patterns.
 
 ### Configuration
 
@@ -239,6 +240,96 @@ helm install hyperfleet-api ./charts/ \
 
 This is the Kubernetes-native pattern for handling sensitive data securely.
 
+#### Partner Schema Validation
+
+Partners can supply a custom OpenAPI schema to enforce provider-specific constraints on `ClusterSpec` and `NodePoolSpec` fields. The schema is validated **before** data enters the database, and the API **fails to start** if the path is configured but the file is missing or invalid.
+
+> **Why fail-fast?** Silently disabling schema validation when the file is misconfigured would allow invalid data through to Sentinel and adapters, causing failures much later in the pipeline. An explicit startup failure is easier to diagnose and fix than a runtime data corruption.
+
+##### Option A: Inline schema content
+
+Provide the schema directly in your `values.yaml`. Helm creates a ConfigMap automatically:
+
+```yaml
+partnerSchema:
+  enabled: true
+  content: |
+    openapi: "3.0.0"
+    info:
+      title: My Partner Schema
+      version: 1.0.0
+    paths: {}
+    components:
+      schemas:
+        ClusterSpec:
+          type: object
+          required:
+            - region
+            - provider
+          properties:
+            region:
+              type: string
+              enum: [us-central1, us-east1, europe-west1]
+            provider:
+              type: string
+              enum: [gcp]
+        NodePoolSpec:
+          type: object
+          required:
+            - machine_type
+            - replicas
+          properties:
+            machine_type:
+              type: string
+              minLength: 1
+            replicas:
+              type: integer
+              minimum: 1
+              maximum: 100
+```
+
+##### Option B: Existing ConfigMap
+
+Point to a ConfigMap you created separately (e.g., from a GitOps pipeline):
+
+```bash
+# Create the ConfigMap with your schema
+kubectl create configmap my-partner-schema \
+  --namespace hyperfleet-system \
+  --from-file=schema.yaml=/path/to/your/schema.yaml
+```
+
+```yaml
+partnerSchema:
+  enabled: true
+  existingConfigMap: my-partner-schema
+  existingConfigMapKey: schema.yaml   # optional, defaults to "schema.yaml"
+```
+
+When `partnerSchema.enabled` is `true`, the Helm chart:
+1. Mounts the schema at `/etc/hyperfleet/partner-schema/schema.yaml`
+2. Sets `HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH` to that path automatically
+
+##### Verifying schema validation is active
+
+Check the startup logs for the `"Schema validation enabled"` message:
+
+```bash
+kubectl logs -n hyperfleet-system deploy/hyperfleet-api | grep schema
+# {"level":"INFO","msg":"Schema validation enabled","schema_path":"/etc/hyperfleet/partner-schema/schema.yaml"}
+```
+
+##### What the schema must contain
+
+The schema file must be a valid OpenAPI 3.0 document with at least these two component schemas:
+
+| Schema name | Validated against |
+|-------------|------------------|
+| `ClusterSpec` | `POST /clusters` and `PATCH /clusters/{id}` request bodies |
+| `NodePoolSpec` | `POST /clusters/{id}/node_pools` and `PATCH` requests |
+
+The base `openapi/openapi.yaml` in this repository is a good starting point for a partner schema.
+
 #### Custom Image Deployment
 
 Deploy with custom container image (e.g., `quay.io/myuser/hyperfleet-api:v1.0.0`):
@@ -300,6 +391,10 @@ helm uninstall hyperfleet-api --namespace hyperfleet-system
 | `podDisruptionBudget.enabled` | Enable PodDisruptionBudget | `false` |
 | `podDisruptionBudget.minAvailable` | Minimum available pods during disruption | `1` |
 | `podDisruptionBudget.maxUnavailable` | Maximum unavailable pods during disruption | - |
+| `partnerSchema.enabled` | Mount a custom OpenAPI schema for spec validation | `false` |
+| `partnerSchema.content` | Inline schema YAML (Helm creates ConfigMap) | `""` |
+| `partnerSchema.existingConfigMap` | Name of an existing ConfigMap with the schema | `""` |
+| `partnerSchema.existingConfigMapKey` | Key in the ConfigMap holding the schema | `schema.yaml` |
 
 ### Custom Values File
 

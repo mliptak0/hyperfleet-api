@@ -1,0 +1,12 @@
+{{- if and .Values.partnerSchema.enabled .Values.partnerSchema.content (not .Values.partnerSchema.existingConfigMap) }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "hyperfleet-api.fullname" . }}-partner-schema
+  labels:
+    {{- include "hyperfleet-api.labels" . | nindent 4 }}
+data:
+  schema.yaml: |
+{{ .Values.partnerSchema.content | indent 4 }}
+{{- end }}

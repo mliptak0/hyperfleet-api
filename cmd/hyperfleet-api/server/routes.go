@@ -107,27 +107,21 @@ func (s *apiServer) routes(tracingEnabled bool) *mux.Router {
 func registerAPIMiddleware(router *mux.Router) {
 	router.Use(MetricsMiddleware)
 
-	// Schema validation middleware (validates cluster/nodepool spec fields)
-	// Load schema path from config (follows Flag > Env > Config File > Default priority)
+	ctx := context.Background()
 	schemaPath := env().Config.Server.OpenAPISchemaPath
 
-	// Initialize schema validator (non-blocking - will warn if schema not found)
-	// Use background context for initialization logging
-	ctx := context.Background()
-
-	schemaValidator, err := validators.NewSchemaValidator(schemaPath)
+	schemaValidator, err := loadSchemaValidator(schemaPath)
 	if err != nil {
-		// Log warning but don't fail - schema validation is optional
-		logger.With(ctx, logger.FieldSchemaPath, schemaPath).WithError(err).Warn("Failed to load schema validator")
-		logger.Warn(ctx, "Schema validation is disabled. Spec fields will not be validated.")
-		logger.Info(ctx, "To enable schema validation:")
-		logger.Info(ctx, "  - Local: Run from repo root, or use --server-openapi-schema-path=openapi/openapi.yaml")
-		logger.Info(ctx, "  - Config file: server.openapi_schema_path")
-		logger.Info(ctx, "  - Environment: HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH")
-	} else {
-		// Apply schema validation middleware
+		// Fail fast: a configured schema path that cannot be loaded is a fatal misconfiguration.
+		// Silently skipping validation would allow invalid data into the database.
+		logger.With(ctx, logger.FieldSchemaPath, schemaPath).WithError(err).Error("Failed to load partner schema — fix the path or unset HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH")
+		check(err, "Failed to initialize schema validator")
+	}
+	if schemaValidator != nil {
 		logger.With(ctx, logger.FieldSchemaPath, schemaPath).Info("Schema validation enabled")
 		router.Use(middleware.SchemaValidationMiddleware(schemaValidator))
+	} else {
+		logger.Info(ctx, "Schema validation disabled (set HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH to enable)")
 	}
 
 	router.Use(
@@ -137,4 +131,14 @@ func registerAPIMiddleware(router *mux.Router) {
 	)
 
 	router.Use(gorillahandlers.CompressHandler)
+}
+
+// loadSchemaValidator loads a schema validator from the given path.
+// Returns nil, nil when schemaPath is empty (validation disabled, not an error).
+// Returns an error when schemaPath is non-empty but the file cannot be loaded or is invalid.
+func loadSchemaValidator(schemaPath string) (*validators.SchemaValidator, error) {
+	if schemaPath == "" {
+		return nil, nil
+	}
+	return validators.NewSchemaValidator(schemaPath)
 }

@@ -89,7 +89,7 @@ func NewServerConfig() *ServerConfig {
 		Hostname:          "",
 		Host:              "localhost",
 		Port:              8000,
-		OpenAPISchemaPath: "openapi/openapi.yaml",
+		OpenAPISchemaPath: "",
 		Timeouts: TimeoutsConfig{
 			Read:  5 * time.Second,
 			Write: 30 * time.Second,

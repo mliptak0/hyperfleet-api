@@ -121,6 +121,12 @@ spec:
         # Database credentials from Secret (using secretKeyRef)
         {{- include "hyperfleet-api.databaseEnvVars" . | nindent 8 }}
 
+        # Partner schema validation — set schema path when enabled
+        {{- if .Values.partnerSchema.enabled }}
+        - name: HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH
+          value: /etc/hyperfleet/partner-schema/schema.yaml
+        {{- end }}
+
         # Extra environment variables (escape hatch for overrides)
         {{- with .Values.extraEnv }}
         {{- toYaml . | nindent 8 }}
@@ -154,6 +160,12 @@ spec:
         - name: tmp
           mountPath: /tmp
 
+        {{- if .Values.partnerSchema.enabled }}
+        - name: partner-schema
+          mountPath: /etc/hyperfleet/partner-schema
+          readOnly: true
+        {{- end }}
+
         {{- with .Values.extraVolumeMounts }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -172,6 +184,19 @@ spec:
 
       - name: tmp
         emptyDir: {}
+
+      {{- if .Values.partnerSchema.enabled }}
+      - name: partner-schema
+        configMap:
+          {{- if .Values.partnerSchema.existingConfigMap }}
+          name: {{ .Values.partnerSchema.existingConfigMap }}
+          {{- else }}
+          name: {{ include "hyperfleet-api.fullname" . }}-partner-schema
+          {{- end }}
+          items:
+          - key: {{ .Values.partnerSchema.existingConfigMapKey | default "schema.yaml" }}
+            path: schema.yaml
+      {{- end }}
 
       {{- with .Values.extraVolumes }}
       {{- toYaml . | nindent 6 }}
