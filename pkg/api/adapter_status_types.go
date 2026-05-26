@@ -17,10 +17,12 @@ type AdapterStatus struct {
 	ResourceType       string         `json:"resource_type" gorm:"size:20;index:idx_resource;not null"`
 	ResourceID         string         `json:"resource_id" gorm:"size:255;index:idx_resource;not null"`
 	Adapter            string         `json:"adapter" gorm:"size:255;not null;uniqueIndex:idx_resource_adapter"`
-	Conditions         datatypes.JSON `json:"conditions" gorm:"type:jsonb;not null"`
-	Data               datatypes.JSON `json:"data,omitempty" gorm:"type:jsonb"`
-	Metadata           datatypes.JSON `json:"metadata,omitempty" gorm:"type:jsonb"`
-	ObservedGeneration int32          `json:"observed_generation" gorm:"not null"`
+	Conditions              datatypes.JSON `json:"conditions" gorm:"type:jsonb;not null"`
+	Data                    datatypes.JSON `json:"data,omitempty" gorm:"type:jsonb"`
+	Metadata                datatypes.JSON `json:"metadata,omitempty" gorm:"type:jsonb"`
+	ObservedGeneration      int32          `json:"observed_generation" gorm:"not null"`
+	AppliedResourceSnapshot datatypes.JSON `json:"applied_resource_snapshot,omitempty" gorm:"type:jsonb"`
+	AppliedGeneration       *int32         `json:"applied_generation,omitempty"`
 }
 
 type AdapterStatusMetadata struct {

@@ -71,13 +71,20 @@ func (d *sqlAdapterStatusDao) Upsert(
 				adapterStatus.ObservedGeneration,
 				adapterStatus.LastReportTime,
 			).
-			Updates(map[string]interface{}{
-				"conditions":          adapterStatus.Conditions,
-				"data":                adapterStatus.Data,
-				"metadata":            adapterStatus.Metadata,
-				"observed_generation": adapterStatus.ObservedGeneration,
-				"last_report_time":    adapterStatus.LastReportTime,
-			})
+			Updates(func() map[string]interface{} {
+				updateMap := map[string]interface{}{
+					"conditions":          adapterStatus.Conditions,
+					"data":                adapterStatus.Data,
+					"metadata":            adapterStatus.Metadata,
+					"observed_generation": adapterStatus.ObservedGeneration,
+					"last_report_time":    adapterStatus.LastReportTime,
+				}
+				if adapterStatus.AppliedGeneration != nil {
+					updateMap["applied_resource_snapshot"] = adapterStatus.AppliedResourceSnapshot
+					updateMap["applied_generation"] = adapterStatus.AppliedGeneration
+				}
+				return updateMap
+			}())
 		if updateResult.Error != nil {
 			db.MarkForRollback(ctx, updateResult.Error)
 			return nil, updateResult.Error

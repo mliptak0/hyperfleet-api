@@ -59,16 +59,27 @@ func ConvertAdapterStatus(
 		}
 	}
 
+	// Marshal AppliedResourceSnapshot (if provided)
+	var appliedSnapshotJSON datatypes.JSON
+	if req.AppliedResourceSnapshot != nil {
+		appliedSnapshotJSON, err = json.Marshal(req.AppliedResourceSnapshot)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal applied_resource_snapshot: %w", err)
+		}
+	}
+
 	return &api.AdapterStatus{
-		ResourceType:       resourceType,
-		ResourceID:         resourceID,
-		Adapter:            req.Adapter,
-		ObservedGeneration: req.ObservedGeneration,
-		Conditions:         conditionsJSON,
-		Data:               dataJSON,
-		Metadata:           metadataJSON,
-		CreatedTime:        now,
-		LastReportTime:     now,
+		ResourceType:            resourceType,
+		ResourceID:              resourceID,
+		Adapter:                 req.Adapter,
+		ObservedGeneration:      req.ObservedGeneration,
+		Conditions:              conditionsJSON,
+		Data:                    dataJSON,
+		Metadata:                metadataJSON,
+		AppliedResourceSnapshot: appliedSnapshotJSON,
+		AppliedGeneration:       req.AppliedGeneration,
+		CreatedTime:             now,
+		LastReportTime:          now,
 	}, nil
 }
 
@@ -142,13 +153,25 @@ func PresentAdapterStatus(adapterStatus *api.AdapterStatus) (openapi.AdapterStat
 		}
 	}
 
+	// Unmarshal AppliedResourceSnapshot
+	var appliedResourceSnapshot *map[string]interface{}
+	if len(adapterStatus.AppliedResourceSnapshot) > 0 {
+		var snapshot map[string]interface{}
+		if err := json.Unmarshal(adapterStatus.AppliedResourceSnapshot, &snapshot); err != nil {
+			return openapi.AdapterStatus{}, fmt.Errorf("failed to unmarshal applied_resource_snapshot: %w", err)
+		}
+		appliedResourceSnapshot = &snapshot
+	}
+
 	return openapi.AdapterStatus{
-		Adapter:            adapterStatus.Adapter,
-		Conditions:         openapiConditions,
-		CreatedTime:        adapterStatus.CreatedTime,
-		Data:               &data,
-		LastReportTime:     adapterStatus.LastReportTime,
-		Metadata:           openapiMetadata,
-		ObservedGeneration: adapterStatus.ObservedGeneration,
+		Adapter:                 adapterStatus.Adapter,
+		AppliedGeneration:       adapterStatus.AppliedGeneration,
+		AppliedResourceSnapshot: appliedResourceSnapshot,
+		Conditions:              openapiConditions,
+		CreatedTime:             adapterStatus.CreatedTime,
+		Data:                    &data,
+		LastReportTime:          adapterStatus.LastReportTime,
+		Metadata:                openapiMetadata,
+		ObservedGeneration:      adapterStatus.ObservedGeneration,
 	}, nil
 }
