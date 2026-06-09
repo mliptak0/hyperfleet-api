@@ -154,8 +154,6 @@ func (s *sqlClusterService) SoftDelete(ctx context.Context, id string) (*api.Clu
 		return nil, handleSoftDeleteError(api.ResourceTypeCluster, saveErr)
 	}
 
-	metrics.RecordPendingDeletion("cluster")
-
 	cluster, svcErr := s.UpdateClusterStatusFromAdapters(ctx, id)
 	if svcErr != nil {
 		return nil, svcErr
@@ -290,6 +288,27 @@ func (s *sqlClusterService) recomputeAndSaveClusterStatus(
 
 	if jsonEqual(cluster.StatusConditions, conditionsJSON) {
 		return cluster, nil
+	}
+
+	// Record reconciliation metrics for Reconciled condition transitions (True -> False)
+	var oldReconciled *api.ResourceCondition
+	if len(cluster.StatusConditions) > 0 {
+		var oldConds []api.ResourceCondition
+		if err := json.Unmarshal(cluster.StatusConditions, &oldConds); err == nil {
+			for i := range oldConds {
+				if oldConds[i].Type == api.ResourceConditionTypeReconciled {
+					oldReconciled = &oldConds[i]
+					break
+				}
+			}
+		}
+	}
+	if (oldReconciled == nil || oldReconciled.Status == api.ConditionTrue) && reconciled.Status == api.ConditionFalse {
+		isDelete := "false"
+		if cluster.DeletedTime != nil {
+			isDelete = "true"
+		}
+		metrics.RecordPendingReconciliation(api.ResourceTypeCluster, isDelete)
 	}
 
 	if err := s.clusterDao.SaveStatusConditions(ctx, cluster.ID, conditionsJSON); err != nil {

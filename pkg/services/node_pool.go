@@ -195,8 +195,6 @@ func (s *sqlNodePoolService) SoftDelete(ctx context.Context, nodePoolID string) 
 		return nil, handleSoftDeleteError(api.ResourceTypeNodePool, err)
 	}
 
-	metrics.RecordPendingDeletion("nodepool")
-
 	updated, svcErr := s.UpdateNodePoolStatusFromAdapters(ctx, nodePool.ID)
 	if svcErr != nil {
 		return nil, svcErr
@@ -215,12 +213,10 @@ func (s *sqlNodePoolService) CascadeSoftDelete(
 		deletedTime = time.Now().UTC().Truncate(time.Microsecond)
 	}
 
-	var newlyDeleted int
 	for _, np := range nodePools {
 		if np.DeletedTime == nil {
 			np.MarkDeleted(deletedBy, deletedTime)
 			np.IncrementGeneration()
-			newlyDeleted++
 		}
 	}
 
@@ -230,10 +226,6 @@ func (s *sqlNodePoolService) CascadeSoftDelete(
 
 	if err := s.nodePoolDao.SaveAll(ctx, nodePools); err != nil {
 		return handleSoftDeleteError(api.ResourceTypeNodePool, err)
-	}
-
-	for range newlyDeleted {
-		metrics.RecordPendingDeletion("nodepool")
 	}
 
 	return nil
@@ -379,6 +371,37 @@ func (s *sqlNodePoolService) recomputeAndSaveNodePoolStatus(
 	}
 	if conditionsJSON == nil {
 		return nodePool, nil
+	}
+
+	// Record reconciliation metrics for Reconciled condition transitions (True -> False)
+	var oldReconciled *api.ResourceCondition
+	if len(nodePool.StatusConditions) > 0 {
+		var oldConds []api.ResourceCondition
+		if err := json.Unmarshal(nodePool.StatusConditions, &oldConds); err == nil {
+			for i := range oldConds {
+				if oldConds[i].Type == api.ResourceConditionTypeReconciled {
+					oldReconciled = &oldConds[i]
+					break
+				}
+			}
+		}
+	}
+	var newReconciled *api.ResourceCondition
+	var newConds []api.ResourceCondition
+	if err := json.Unmarshal(conditionsJSON, &newConds); err == nil {
+		for i := range newConds {
+			if newConds[i].Type == api.ResourceConditionTypeReconciled {
+				newReconciled = &newConds[i]
+				break
+			}
+		}
+	}
+	if (oldReconciled == nil || oldReconciled.Status == api.ConditionTrue) && newReconciled != nil && newReconciled.Status == api.ConditionFalse {
+		isDelete := "false"
+		if nodePool.DeletedTime != nil {
+			isDelete = "true"
+		}
+		metrics.RecordPendingReconciliation(api.ResourceTypeNodePool, isDelete)
 	}
 
 	if err := s.nodePoolDao.SaveStatusConditions(ctx, nodePool.ID, conditionsJSON); err != nil {
