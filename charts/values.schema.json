@@ -417,6 +417,80 @@
             }
           }
         },
+        "tenant": {
+          "type": "object",
+          "description": "Tenant isolation configuration: trusted system-identity header and gateway-injected tenant dimensions",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Enable tenant isolation enforcement"
+            },
+            "system_header": {
+              "type": "string",
+              "description": "Trusted header identifying system callers (e.g. Sentinel, adapters), which bypass tenant scoping entirely"
+            },
+            "dimensions": {
+              "type": "array",
+              "description": "Tenant dimensions: each maps a trusted gateway-injected header to a tenancy key",
+              "items": {
+                "type": "object",
+                "required": [
+                  "header",
+                  "key"
+                ],
+                "properties": {
+                  "header": {
+                    "type": "string",
+                    "description": "Trusted HTTP header injected by the gateway for this dimension"
+                  },
+                  "key": {
+                    "type": "string",
+                    "description": "Tenancy key this header's value is stored under"
+                  },
+                  "required": {
+                    "type": "boolean",
+                    "description": "Whether this dimension must be present for non-system callers"
+                  }
+                }
+              }
+            }
+          },
+          "if": {
+            "properties": {
+              "enabled": {
+                "const": true
+              }
+            },
+            "required": [
+              "enabled"
+            ]
+          },
+          "then": {
+            "properties": {
+              "system_header": {
+                "type": "string",
+                "minLength": 1
+              },
+              "dimensions": {
+                "type": "array",
+                "contains": {
+                  "type": "object",
+                  "properties": {
+                    "required": {
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "required"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "system_header"
+            ]
+          }
+        },
         "entities": {
           "type": "array",
           "description": "Entity descriptors registered at startup. Each entry auto-generates REST endpoints, spec validation, and delete policies.",

@@ -138,6 +138,34 @@ data:
 
       shutdown_timeout: {{ .Values.config.health.shutdown_timeout }}
       db_ping_timeout: {{ .Values.config.health.db_ping_timeout }}
+
+{{- if .Values.config.tenant.enabled }}
+{{- $headers := list }}
+{{- $keys := list }}
+{{- range .Values.config.tenant.dimensions }}
+{{- $headers = append $headers .header }}
+{{- $keys = append $keys .key }}
+{{- end }}
+{{- if ne (len $headers) (len (uniq $headers)) }}
+{{- fail "config.tenant.dimensions: duplicate header values are not allowed" }}
+{{- end }}
+{{- if ne (len $keys) (len (uniq $keys)) }}
+{{- fail "config.tenant.dimensions: duplicate key values are not allowed" }}
+{{- end }}
+    tenant:
+      enabled: {{ .Values.config.tenant.enabled }}
+      system_header: {{ .Values.config.tenant.system_header | quote }}
+{{- if .Values.config.tenant.dimensions }}
+      dimensions:
+{{- range .Values.config.tenant.dimensions }}
+        - header: {{ .header | quote }}
+          key: {{ .key | quote }}
+          required: {{ .required | default false }}
+{{- end }}
+{{- else }}
+      dimensions: []
+{{- end }}
+{{- end }}
     # NOTE: When EntityDescriptor gains many more fields, consider replacing
     # the explicit range below with: .Values.config.entities | toYaml | indent 6
 {{- if .Values.config.entities }}

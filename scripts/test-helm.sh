@@ -252,6 +252,77 @@ assert_contains "$CONFIG_YAML" 'entities: []' "expected entities: [] in config.y
 echo "$OUTPUT" | kubeconform_validate
 pass "Empty entities list config template"
 
+# ─── Tenant config rendering tests ────────────────────────────────────
+
+run_test "template with tenant config disabled (default)"
+OUTPUT=$(render)
+CONFIG_YAML=$(echo "$OUTPUT" | extract_config_yaml)
+echo "$CONFIG_YAML" | validate_yaml || fail "rendered config.yaml is not valid YAML with tenant disabled"
+assert_not_contains "$CONFIG_YAML" 'tenant:' \
+  "tenant block must be omitted from config.yaml when disabled (the current app config loader rejects unknown top-level keys)"
+echo "$OUTPUT" | kubeconform_validate
+pass "Tenant config disabled by default (block omitted)"
+
+run_test "tenant config enabled with zero dimensions fails schema validation"
+OUTPUT=$(render --set config.tenant.enabled=true 2>&1 || true)
+assert_contains "$OUTPUT" 'no items match contains schema' "expected schema validation error for zero tenant dimensions"
+pass "Tenant config enabled with zero dimensions (validation failure)"
+
+run_test "tenant config enabled with no required dimension fails schema validation"
+OUTPUT=$(render \
+  --set config.tenant.enabled=true \
+  --set-json 'config.tenant.dimensions=[{"header":"X-Tenant-Org","key":"org","required":false}]' 2>&1 || true)
+assert_contains "$OUTPUT" 'no items match contains schema' "expected schema validation error when no dimension is required"
+pass "Tenant config enabled with no required dimension (validation failure)"
+
+run_test "tenant config enabled with empty system_header fails schema validation"
+OUTPUT=$(render \
+  --set config.tenant.enabled=true \
+  --set config.tenant.system_header="" \
+  --set-json 'config.tenant.dimensions=[{"header":"X-Tenant-Org","key":"org","required":true}]' 2>&1 || true)
+assert_contains "$OUTPUT" 'system_header' "expected schema validation error for empty system_header"
+pass "Tenant config enabled with empty system_header (validation failure)"
+
+run_test "tenant config with duplicate dimension headers fails render"
+OUTPUT=$(render \
+  --set config.tenant.enabled=true \
+  --set-json 'config.tenant.dimensions=[{"header":"X-Tenant-Org","key":"org","required":true},{"header":"X-Tenant-Org","key":"project","required":false}]' 2>&1 || true)
+assert_contains "$OUTPUT" 'duplicate header values are not allowed' "expected render failure for duplicate dimension headers"
+pass "Tenant config with duplicate dimension headers (validation failure)"
+
+run_test "tenant config with duplicate dimension keys fails render"
+OUTPUT=$(render \
+  --set config.tenant.enabled=true \
+  --set-json 'config.tenant.dimensions=[{"header":"X-Tenant-Org","key":"org","required":true},{"header":"X-Tenant-Project","key":"org","required":false}]' 2>&1 || true)
+assert_contains "$OUTPUT" 'duplicate key values are not allowed' "expected render failure for duplicate dimension keys"
+pass "Tenant config with duplicate dimension keys (validation failure)"
+
+run_test "template with tenant config enabled (org/project dimensions)"
+OUTPUT=$(render \
+  --set config.tenant.enabled=true \
+  --set-json 'config.tenant.dimensions=[{"header":"X-Tenant-Org","key":"org","required":true},{"header":"X-Tenant-Project","key":"project","required":false}]')
+CONFIG_YAML=$(echo "$OUTPUT" | extract_config_yaml)
+echo "$CONFIG_YAML" | validate_yaml || fail "rendered config.yaml is not valid YAML with tenant enabled"
+assert_contains "$CONFIG_YAML" 'enabled: true' "expected tenant.enabled: true"
+assert_contains "$CONFIG_YAML" 'system_header: "X-System-Identity"' "expected default system_header"
+assert_contains "$CONFIG_YAML" 'header: "X-Tenant-Org"' "org dimension header not found in config.yaml"
+assert_contains "$CONFIG_YAML" 'key: "org"' "org dimension key not found in config.yaml"
+assert_contains "$CONFIG_YAML" 'header: "X-Tenant-Project"' "project dimension header not found in config.yaml"
+echo "$OUTPUT" | kubeconform_validate
+pass "Tenant config enabled with org/project dimensions"
+
+run_test "template with tenant dimensions swapped via values only (differently-shaped model)"
+OUTPUT=$(render \
+  --set config.tenant.enabled=true \
+  --set-json 'config.tenant.dimensions=[{"header":"X-Tenant-Account","key":"account","required":true},{"header":"X-Tenant-Segment","key":"segment","required":true}]')
+CONFIG_YAML=$(echo "$OUTPUT" | extract_config_yaml)
+echo "$CONFIG_YAML" | validate_yaml || fail "rendered config.yaml is not valid YAML with swapped tenant dimensions"
+assert_contains "$CONFIG_YAML" 'key: "account"' "account dimension not found in config.yaml"
+assert_contains "$CONFIG_YAML" 'key: "segment"' "segment dimension not found in config.yaml"
+assert_not_contains "$CONFIG_YAML" 'key: "org"' "unexpected leftover org dimension after values-only swap"
+echo "$OUTPUT" | kubeconform_validate
+pass "Tenant dimensions swapped via values only, no template edits"
+
 # ─── Summary ─────────────────────────────────────────────────────────
 
 echo ""

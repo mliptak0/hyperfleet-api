@@ -195,6 +195,41 @@ config:
     shutdown_timeout: 20s
     # -- Timeout for the database liveness ping
     db_ping_timeout: 2s
+
+  # -- Tenant isolation configuration. Declares the trusted system-identity
+  # header and the tenant dimensions (trusted headers injected by the
+  # gateway) used to scope resources to their owning tenant. Enable for
+  # deployments that sit behind the gateway (Envoy + Authorino) and require
+  # tenant isolation; leave disabled for single-tenant deployments.
+  tenant:
+    # -- Enable tenant isolation enforcement
+    enabled: false
+    # -- Trusted header identifying system callers (e.g. Sentinel, adapters),
+    # which bypass tenant scoping entirely
+    system_header: "X-System-Identity"
+    # -- Tenant dimensions. Each maps a trusted gateway-injected header to a
+    # tenancy key. At least one dimension must be marked `required: true`
+    # when `tenant.enabled` is true — a caller resolving zero dimensions
+    # must never reach the data layer.
+    dimensions: []
+    # Example (org/project model):
+    # dimensions:
+    #   - header: X-Tenant-Org
+    #     key: org
+    #     required: true
+    #   - header: X-Tenant-Project
+    #     key: project
+    #     required: false
+    #
+    # Example (a differently-shaped model — same chart, only values change):
+    # dimensions:
+    #   - header: X-Tenant-Account
+    #     key: account
+    #     required: true
+    #   - header: X-Tenant-Segment
+    #     key: segment
+    #     required: true
+
   # -- Entity descriptors registered at startup. Each entry auto-generates
   # REST endpoints, spec validation, and delete policies.
   entities:
